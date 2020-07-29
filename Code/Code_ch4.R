@@ -29,17 +29,31 @@ doc_term_mat <- res_mecab[, -(1:3)] %>%
 # 4.3.3 TF-IDF重み付け --------------------------------------------------------
 
 # テキストにおける語句tの頻度
-TF <- doc_term_mat
+tf_ij <- doc_term_mat
 
 # テキストの総数
 N <- nrow(doc_term_mat)
 
 # 語句tを含むテキストの数
-df <- colSums(doc_term_mat > 0)
+df_j <- colSums(doc_term_mat > 0)
 
 # IDF
-IDF <- log(N / df)
+IDF_j <- log(N / df_j)
 
 # TF-IDF
-TF_IDF <- t(t(TF) * IDF)
+TF_IDF <- t(t(tf_ij) * IDF_j)
+
+# tf_ij-IDF重み付け
+TFIDF_w_ij <- t(log(t(tf_ij) + 1) * IDF_j)
+
+# TCF重み
+TCF_w_ij <- t((t(tf_ij) * IDF_j) / sqrt(colSums(t(tf_ij) * IDF_j)))
+
+# ITC重み
+ITC_w_ij <- t((t(log(tf_ij + 1)) * IDF_j) / sqrt(colSums((t(log(tf_ij + 1) * IDF_j))^2)))
+
+
+
+
+
 
