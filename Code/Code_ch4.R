@@ -7,6 +7,7 @@
 library(RMeCab)
 library(dplyr)
 library(tidyr)
+library(ggplot2)
 
 # ファイルパスを指定
 dir_path <- "text_data_cp932/kobushi"
@@ -36,11 +37,11 @@ res_mecab_y <- docDF(dir_path_y, type = 1, pos = PoS)
 
 # 頻度を集計
 freq_df_x <- tidyr::tibble(
-  TERM = res_mecab_x[["TERM"]], 
+  term = res_mecab_x[["TERM"]], 
   x = rowSums(res_mecab_x[, -c(1:3)])
 )
 freq_df_y <- tidyr::tibble(
-  TERM = res_mecab_y[["TERM"]], 
+  term = res_mecab_y[["TERM"]], 
   y = rowSums(res_mecab_y[, -c(1:3)])
 )
 
@@ -53,6 +54,58 @@ freq_df_xy <- dplyr::full_join(
     y = replace_na(y, 0)
   ) %>% 
   dplyr::mutate(xy = x + y)
+
+# 頻度による順位付け
+freq_rank_df_x <- freq_df_x %>% 
+  dplyr::arrange(dplyr::desc(x)) %>% 
+  dplyr::mutate(rank = dplyr::min_rank(-x))
+
+
+# 4.1 ジップの法則 --------------------------------------------------------------
+
+# 相対頻度
+f_j <- freq_rank_df_x[["x"]] / N
+
+# ランク
+r_j <- freq_rank_df_x[["rank"]]
+
+# ジップの法則
+c_j <- f_j * r_j
+summary(c_j)
+
+# 作図
+ggplot(freq_rank_df_x, aes(x = rank, y = x)) + 
+  geom_point() + 
+  labs(title = "Zipf's law", x = "rank", y = "relative freq")
+
+
+# 拡張版ジップの法則？
+
+
+# 相対頻度の対数
+log_f_j <- log(f_j)
+
+# ランクの対数
+log_r_j <- log(r_j)
+
+# Zipf-Mandelbrot法則:線形回帰
+res_lm <- lm(log_f_j ~ log_r_j)
+summary(res_lm)
+
+# 推定パラメータ
+log_c <- res_lm$coefficients[["(Intercept)"]]
+a <- res_lm$coefficients[["log_r_j"]]
+
+# 作図
+ZM_df <- tibble(
+  log_f = log_f_j, 
+  log_r = log_r_j, 
+  hat_log_f = log_c + a * log_r
+)
+ggplot(ZM_df) + 
+  geom_point(mapping = aes(x = log_r, y = log_f), position = "jitter") + 
+  geom_line(mapping = aes(x = log_r, y = hat_log_f)) + 
+  labs(title = "Zipf-Mandelbrot law", x = "log rank", y = "log relative freq")
 
 
 # 4.3.3 TF-IDF重み付け --------------------------------------------------------
@@ -108,9 +161,9 @@ H_y <- - sum(p_y_k * log(p_y_k), na.rm = TRUE)
 
 # 頻度表:
 freq_df_xy2 <- tidyr::tibble(
-  TERM_x = rep(freq_df_xy[["TERM"]], times = nrow(freq_df_xy)), 
+  term_x = rep(freq_df_xy[["TERM"]], times = nrow(freq_df_xy)), 
   x = rep(freq_df_xy[["x"]], times = nrow(freq_df_xy)), 
-  TERM_y = rep(freq_df_xy[["TERM"]], each = nrow(freq_df_xy)), 
+  term_y = rep(freq_df_xy[["TERM"]], each = nrow(freq_df_xy)), 
   y = rep(freq_df_xy[["y"]], each = nrow(freq_df_xy))
 ) %>% 
   dplyr::mutate(xy = x + y)
