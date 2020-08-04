@@ -9,11 +9,13 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 
-# ファイルパスを指定
-dir_path <- "text_data_cp932/kobushi"
 
 # 抽出する品詞を指定
 PoS <- c("名詞")
+
+
+# ファイルパスを指定
+dir_path <- "text_data_cp932/kobushi"
 
 # 形態素解析
 res_mecab <- docDF(dir_path, type = 1, pos = PoS)
@@ -38,33 +40,36 @@ res_mecab_y <- docDF(dir_path_y, type = 1, pos = PoS)
 # 頻度を集計
 freq_df_x <- tidyr::tibble(
   term = res_mecab_x[["TERM"]], 
-  x = rowSums(res_mecab_x[, -c(1:3)])
+  freq_x = rowSums(res_mecab_x[, -c(1:3)])
 )
 freq_df_y <- tidyr::tibble(
   term = res_mecab_y[["TERM"]], 
-  y = rowSums(res_mecab_y[, -c(1:3)])
+  freq_y = rowSums(res_mecab_y[, -c(1:3)])
 )
 
 # 単語文書行列を作成
 freq_df_xy <- dplyr::full_join(
-  freq_df_x, freq_df_y, by = "TERM"
+  freq_df_x, freq_df_y, by = "term"
 ) %>% 
   dplyr::mutate(
-    x = replace_na(x, 0), 
-    y = replace_na(y, 0)
+    freq_x = replace_na(freq_x, 0), 
+    freq_y = replace_na(freq_y, 0)
   ) %>% 
-  dplyr::mutate(xy = x + y)
+  dplyr::mutate(freq_xy = freq_x + freq_y)
 
 # 頻度による順位付け
 freq_rank_df_x <- freq_df_x %>% 
-  dplyr::arrange(dplyr::desc(x)) %>% 
-  dplyr::mutate(rank = dplyr::min_rank(-x))
+  dplyr::arrange(dplyr::desc(freq_x)) %>% 
+  dplyr::mutate(rank = dplyr::min_rank(-freq_x))
+
+# 総単語数
+N_x <- sum(freq_df_x[["freq_x"]])
 
 
 # 4.1 ジップの法則 --------------------------------------------------------------
 
 # 相対頻度
-f_j <- freq_rank_df_x[["x"]] / N
+f_j <- freq_rank_df_x[["freq_x"]] / N_x
 
 # ランク
 r_j <- freq_rank_df_x[["rank"]]
@@ -74,7 +79,14 @@ c_j <- f_j * r_j
 summary(c_j)
 
 # 作図
-ggplot(freq_rank_df_x, aes(x = rank, y = x)) + 
+Zipf_df <- tibble(
+  rank = r_j, 
+  relative_freq = f_j
+)
+ggplot(Zipf_df, aes(x = rank, y = relative_freq)) + 
+  geom_point() + 
+  labs(title = "Zipf's law", x = "rank", y = "relative freq")
+ggplot(freq_rank_df_x, aes(x = rank, y = freq_x / sum(freq_x))) + 
   geom_point() + 
   labs(title = "Zipf's law", x = "rank", y = "relative freq")
 
@@ -144,8 +156,8 @@ Entropy_w_ij <- log(tf_ij + 1) * (1 + colSums(t(tf_ij) / df_j * log(t(tf_ij) / d
 # 4.3.5 相互情報量による共起頻度の重み付け -------------------------------------------------
 
 # 語句iの頻度:N_x_i > 0
-N_x_i <- freq_df_x[["x"]]
-N_y_k <- freq_df_y[["y"]]
+N_x_i <- freq_df_x[["freq_x"]]
+N_y_k <- freq_df_y[["freq_y"]]
 
 # 語句iの出現確率:最尤法
 p_x_i <- N_x_i / sum(N_x_i)
@@ -161,16 +173,16 @@ H_y <- - sum(p_y_k * log(p_y_k), na.rm = TRUE)
 
 # 頻度表:
 freq_df_xy2 <- tidyr::tibble(
-  term_x = rep(freq_df_xy[["TERM"]], times = nrow(freq_df_xy)), 
-  x = rep(freq_df_xy[["x"]], times = nrow(freq_df_xy)), 
-  term_y = rep(freq_df_xy[["TERM"]], each = nrow(freq_df_xy)), 
-  y = rep(freq_df_xy[["y"]], each = nrow(freq_df_xy))
+  term_x = rep(freq_df_xy[["term"]], times = nrow(freq_df_xy)), 
+  freq_x = rep(freq_df_xy[["freq_x"]], times = nrow(freq_df_xy)), 
+  term_y = rep(freq_df_xy[["term"]], each = nrow(freq_df_xy)), 
+  freq_y = rep(freq_df_xy[["freq_y"]], each = nrow(freq_df_xy))
 ) %>% 
-  dplyr::mutate(xy = x + y)
+  dplyr::mutate(freq_xy = freq_x + freq_y)
 
 # 語句jの頻度:N_x_j >= 0
-N_x_j <- freq_df_xy2[["x"]]
-N_y_j <- freq_df_xy2[["y"]]
+N_x_j <- freq_df_xy2[["freq_x"]]
+N_y_j <- freq_df_xy2[["freq_y"]]
 
 # 語句jの出現確率
 p_x_j <- N_x_j / sum(N_x_j)
@@ -187,8 +199,8 @@ H_xy <= H_x + H_y
 
 
 # 語句jの頻度:N_x_j >= 0
-N_x_j <- freq_df_xy[["x"]]
-N_y_j <- freq_df_xy[["y"]]
+N_x_j <- freq_df_xy[["freq_x"]]
+N_y_j <- freq_df_xy[["freq_y"]]
 
 # 語句jの出現確率
 p_x_j <- N_x_j / sum(N_x_j)
