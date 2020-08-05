@@ -14,6 +14,8 @@ library(ggplot2)
 PoS <- c("名詞")
 
 
+# 1グループの各テキストを比較 -------------------------------------------------------------
+
 # ファイルパスを指定
 dir_path <- "text_data_cp932/kobushi"
 
@@ -29,6 +31,8 @@ doc_term_mat <- res_mecab[, -(1:3)] %>%
   t()
 
 
+# 2グループを比較 ----------------------------------------------------------------
+
 # ファイルパスを指定
 dir_path_x <- "text_data_cp932/kobushi"
 dir_path_y <- "text_data_cp932/tsubaki"
@@ -36,6 +40,7 @@ dir_path_y <- "text_data_cp932/tsubaki"
 # 形態素解析
 res_mecab_x <- docDF(dir_path_x, type = 1, pos = PoS)
 res_mecab_y <- docDF(dir_path_y, type = 1, pos = PoS)
+
 
 # 頻度を集計
 freq_df_x <- tidyr::tibble(
@@ -57,13 +62,23 @@ freq_df_xy <- dplyr::full_join(
   ) %>% 
   dplyr::mutate(freq_xy = freq_x + freq_y)
 
+
 # 頻度による順位付け
 freq_rank_df_x <- freq_df_x %>% 
   dplyr::arrange(dplyr::desc(freq_x)) %>% 
   dplyr::mutate(rank = dplyr::min_rank(-freq_x))
+freq_rank_df_y <- freq_df_y %>% 
+  dplyr::arrange(dplyr::desc(freq_y)) %>% 
+  dplyr::mutate(rank = dplyr::min_rank(-freq_y))
 
-# 総単語数
+
+# 延べ語数
 N_x <- sum(freq_df_x[["freq_x"]])
+N_y <- sum(freq_df_y[["freq_y"]])
+
+# 異なり語数
+V_x <- nrow(freq_df_x)
+V_y <- nrow(freq_df_y)
 
 
 # 4.1 ジップの法則 --------------------------------------------------------------
@@ -118,6 +133,102 @@ ggplot(ZM_df) +
   geom_point(mapping = aes(x = log_r, y = log_f), position = "jitter") + 
   geom_line(mapping = aes(x = log_r, y = hat_log_f)) + 
   labs(title = "Zipf-Mandelbrot law", x = "log rank", y = "log relative freq")
+
+
+# 4.2.1 延べ語数と異なり語数を用いた指標 --------------------------------------------------------------
+
+# GuiraudのR
+R_x <- V_x / sqrt(N_x)
+R_y <- V_y / sqrt(N_y)
+R_x; R_y
+
+# HerdanのC
+C_x <- log(V_x) / log(N_x)
+C_y <- log(V_y) / log(N_y)
+C_x; C_y
+
+# Somersのs
+s_x <- log(log(V_x)) / log(log(N_x))
+s_y <- log(log(V_y)) / log(log(N_y))
+s_x; s_y
+
+# Maasのa^2
+a2_x <- (log(N_x) - log(V_x)) / log(log(N_x))
+a2_y <- (log(N_y) - log(V_y)) / log(log(N_y))
+a2_x; a2_y
+
+# TudavaのLN
+LN_x <- (1 - V_x^2) / (V_x^2 * log(N_x))
+LN_y <- (1 - V_y^2) / (V_y^2 * log(N_y))
+LN_x; LN_y
+
+# Duastのk
+k_x <- log(V_x) / log(log(N_x))
+k_y <- log(V_y) / log(log(N_y))
+k_x; k_y
+
+# DugastのU
+U_x <- log(log(N_x)) / (log(N_x) - log(V_x))
+U_y <- log(log(N_y)) / (log(N_y) - log(V_y))
+U_x; U_y
+
+
+# 4.2.2 頻度スペクトルを用いた指標 -----------------------------------------------------
+
+# 出現頻度ごとの単語数(異なり語数)表
+V_mN_df_x <- freq_df_x %>% 
+  dplyr::count(freq_x)
+V_mN_df_y <- freq_df_y %>% 
+  dplyr::count(freq_y)
+
+# 出現頻度ベクトル
+m_x <- V_mN_df_x[["freq_x"]]
+m_y <- V_mN_df_y[["freq_y"]]
+
+# m回出現した単語数(異なり語数)ベクトル
+V_mN_x <- V_mN_df_x[["n"]]
+V_mN_y <- V_mN_df_y[["n"]]
+
+# 処理の検証
+sum(m_x * V_mN_x) == N_x; sum(m_y * V_mN_y) == N_y # 延べ語数
+sum(V_mN_x) == V_x; sum(V_mN_y) == V_y # 異なり語数
+
+
+# YuleのK
+K_x <- 10^4 * (sum(m_x^2 * V_mN_x) - N_x) / N_x^2
+K_y <- 10^4 * (sum(m_y^2 * V_mN_y) - N_y) / N_y^2
+K_x; K_y
+
+# SimpsonのD
+D_x <- sum(V_mN_x * m_x / N_x * (m_x - 1) / (N_x - 1))
+D_y <- sum(V_mN_y * m_y / N_y * (m_y - 1) / (N_y - 1))
+K_x; K_y
+
+# 出現頻度が2の単語数(異なり語数)
+V_2N_x <- V_mN_df_x %>% 
+  dplyr::filter(freq_x == 2) %>% 
+  .[["n"]]
+V_2N_y <- V_mN_df_y %>% 
+  dplyr::filter(freq_y == 2) %>% 
+  .[["n"]]
+
+# SichelのS
+S_x <- V_2N_x / V_x
+S_y <- V_2N_y / V_y
+S_x; S_y
+
+# 出現頻度が1の単語数(異なり語数)
+V_1N_x <- V_mN_df_x %>% 
+  dplyr::filter(freq_x == 1) %>% 
+  .[["n"]]
+V_1N_y <- V_mN_df_y %>% 
+  dplyr::filter(freq_y == 1) %>% 
+  .[["n"]]
+
+# HonoreのH
+H_x <- 100 * log(N_x) / (1 - V_1N_x / V_x)
+H_y <- 100 * log(N_y) / (1 - V_1N_y / V_y)
+H_x; H_y
 
 
 # 4.3.3 TF-IDF重み付け --------------------------------------------------------
