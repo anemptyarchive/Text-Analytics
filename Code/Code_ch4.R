@@ -338,3 +338,58 @@ ED_xy == ED_yx
 
 
 
+# 4.4.1 カイ二乗統計量 -----------------------------------------------------------
+
+# 単語文書行列
+n_ij <- term_doc_mat
+
+# 語句ごとの出現頻度
+n_i <- rowSums(n_ij)
+
+# 文書ごとの単語数
+n_j <- colSums(n_ij)
+
+# 総単語数
+n <- sum(n_ij)
+
+# 期待度数
+e_ij <- rep(n_i, times = length(n_j)) * rep(n_j, each = length(n_i)) / n %>% 
+  matrix(nrow = length(n_i), ncol = length(n_j))
+
+
+# カイ二乗統計量
+chi2 <- sum((n_ij - e_ij)^2 / e_ij)
+
+
+# 尤度比統計量
+G2 <- 2 * sum(n_ij * log(n_ij / e_ij), na.rm = TRUE)
+
+
+# 語句を指定
+i <- which.max(freq_df_xy[["freq_xy"]])
+
+# 各文書の語句iの出現頻度
+n_1j <- freq_df_xy[i, c("freq_x", "freq_y")] %>% 
+  as.vector()
+
+# 各文書の語句i以外の出現頻度
+n_2j <- colSums(freq_df_xy[-i, c("freq_x", "freq_y")]) %>% 
+  as.vector()
+
+# 語句iの総出現頻度
+n_1 <- sum(n_1j)
+
+# 語句i以外の総出現頻度
+n_2 <- sum(n_2j)
+
+# 文書番号を2つ指定
+d1 <- 1
+d2 <- 2
+
+# Fisherの正確確率
+log_p_numer <- lgamma(n_1 + 1) + lgamma(n_2 + 1) + lgamma(n_j[d1] + 1) + lgamma(n_j[d2] + 1)
+log_p_denom <- lgamma(n_1j[d1] + 1) + lgamma(n_1j[d2] + 1) + lgamma(n_2j[d1] + 1) + lgamma(n_2j[d2] + 1) + lgamma(n_1 + n_2 + 1)
+p_n <- exp(log_p_numer - log_p_denom)
+p_n
+
+
