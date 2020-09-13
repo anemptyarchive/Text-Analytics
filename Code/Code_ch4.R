@@ -13,6 +13,8 @@ library(ggplot2)
 # 抽出する品詞を指定
 PoS <- c("名詞")
 
+# 削除する語を指定
+stop_words <- "[\\(\\)（）!?！？％,\\.…']"
 
 # 1グループの各テキストを比較 -------------------------------------------------------------
 
@@ -20,15 +22,21 @@ PoS <- c("名詞")
 dir_path <- "text_data_cp932/kobushi"
 
 # 形態素解析
-res_mecab <- docDF(dir_path, type = 1, pos = PoS)
+res_mecab <- RMeCab::docDF(dir_path, type = 1, pos = PoS)
 
 # 単語文書行列を作成
-term_doc_mat <- res_mecab[, -(1:3)] %>% 
+term_doc_mat <- res_mecab %>% 
+  dplyr::filter(!grepl(stop_words, TERM)) %>% 
+  .[, -(1:3)] %>% 
   as.matrix()
+colnames(term_doc_mat) <- NULL
 
 # 文書単語行列を作成
-doc_term_mat <- res_mecab[, -(1:3)] %>% 
+doc_term_mat <- res_mecab %>% 
+  dplyr::filter(!grepl(stop_words, TERM)) %>% 
+  .[, -(1:3)] %>% 
   t()
+rownames(doc_term_mat) <- NULL
 
 
 # 2グループを比較 ----------------------------------------------------------------
@@ -38,9 +46,10 @@ dir_path_x <- "text_data_cp932/kobushi"
 dir_path_y <- "text_data_cp932/tsubaki"
 
 # 形態素解析
-res_mecab_x <- docDF(dir_path_x, type = 1, pos = PoS)
-res_mecab_y <- docDF(dir_path_y, type = 1, pos = PoS)
-
+res_mecab_x <- RMeCab::docDF(dir_path_x, type = 1, pos = PoS) %>% 
+  dplyr::filter(!grepl(stop_words, TERM))
+res_mecab_y <- RMeCab::docDF(dir_path_y, type = 1, pos = PoS) %>% 
+  dplyr::filter(!grepl(stop_words, TERM))
 
 # 頻度を集計
 freq_df_x <- tidyr::tibble(
@@ -63,15 +72,6 @@ freq_df_xy <- dplyr::full_join(
   dplyr::mutate(freq_xy = freq_x + freq_y)
 
 
-# 頻度による順位付け
-freq_rank_df_x <- freq_df_x %>% 
-  dplyr::arrange(dplyr::desc(freq_x)) %>% 
-  dplyr::mutate(rank = dplyr::min_rank(-freq_x))
-freq_rank_df_y <- freq_df_y %>% 
-  dplyr::arrange(dplyr::desc(freq_y)) %>% 
-  dplyr::mutate(rank = dplyr::min_rank(-freq_y))
-
-
 # 延べ語数
 N_x <- sum(freq_df_x[["freq_x"]])
 N_y <- sum(freq_df_y[["freq_y"]])
@@ -83,59 +83,73 @@ V_y <- nrow(freq_df_y)
 
 # 4.1 ジップの法則 --------------------------------------------------------------
 
-# 相対頻度
-f_j <- freq_rank_df_x[["freq_x"]] / N_x
+# 頻度による順位付け
+freq_rank_df_x <- freq_df_x %>% 
+  dplyr::arrange(dplyr::desc(freq_x)) %>% 
+  dplyr::mutate(rank = dplyr::min_rank(-freq_x))
+freq_rank_df_y <- freq_df_y %>% 
+  dplyr::arrange(dplyr::desc(freq_y)) %>% 
+  dplyr::mutate(rank = dplyr::min_rank(-freq_y))
+
 
 # ランク
-r_j <- freq_rank_df_x[["rank"]]
+r <- freq_rank_df_x[["rank"]]
+
+# 相対頻度
+f_r <- freq_rank_df_x[["freq_x"]] / N_x
 
 # ジップの法則
-c_j <- f_j * r_j
-summary(c_j)
+c_r <- f_r * r
+summary(c_r)
 
 # 作図
 Zipf_df <- tibble(
-  rank = r_j, 
-  relative_freq = f_j
+  rank = r, 
+  relative_freq = f_r
 )
 ggplot(Zipf_df, aes(x = rank, y = relative_freq)) + 
   geom_point() + 
   labs(title = "Zipf's law", x = "rank", y = "relative freq")
-ggplot(freq_rank_df_x, aes(x = rank, y = freq_x / sum(freq_x))) + 
+
+
+# 作図
+ggplot(freq_rank_df_y, aes(x = rank, y = freq_y / N_y)) + 
   geom_point() + 
   labs(title = "Zipf's law", x = "rank", y = "relative freq")
 
 
-# 拡張版ジップの法則？
-
+# ランクの対数
+log_r <- log(r)
 
 # 相対頻度の対数
-log_f_j <- log(f_j)
-
-# ランクの対数
-log_r_j <- log(r_j)
+log_f_r <- log(f_r)
 
 # Zipf-Mandelbrot法則:線形回帰
-res_lm <- lm(log_f_j ~ log_r_j)
+res_lm <- lm(log_f_r ~ log_r)
 summary(res_lm)
 
 # 推定パラメータ
+a <- res_lm$coefficients[["log_r"]]
 log_c <- res_lm$coefficients[["(Intercept)"]]
-a <- res_lm$coefficients[["log_r_j"]]
 
 # 作図
-ZM_df <- tibble(
-  log_f = log_f_j, 
-  log_r = log_r_j, 
-  hat_log_f = log_c + a * log_r
+Zipf_df <- tibble(
+  log_f_r = log_f_r, 
+  log_r = log_r, 
+  hat_log_f_r = log_c + a * log_r
 )
-ggplot(ZM_df) + 
-  geom_point(mapping = aes(x = log_r, y = log_f), position = "jitter") + 
-  geom_line(mapping = aes(x = log_r, y = hat_log_f)) + 
-  labs(title = "Zipf-Mandelbrot law", x = "log rank", y = "log relative freq")
+ggplot(Zipf_df) + 
+  geom_point(mapping = aes(x = log_r, y = log_f_r), position = "jitter") + # 散布図
+  geom_line(mapping = aes(x = log_r, y = hat_log_f_r)) + # 回帰直線
+  labs(title = "Zipf law", x = "log rank", y = "log relative freq")
 
 
 # 4.2.1 延べ語数と異なり語数を用いた指標 --------------------------------------------------------------
+
+# トークン比
+TTR_x <- V_x / N_x
+TTR_y <- V_y / N_y
+TTR_x; TTR_y
 
 # GuiraudのR
 R_x <- V_x / sqrt(N_x)
@@ -252,16 +266,19 @@ TF_IDF <- t(t(tf_ij) * IDF_j)
 TFIDF_w_ij <- t(log(t(tf_ij) + 1) * IDF_j)
 
 # TCF重み
-TCF_w_ij <- t((t(tf_ij) * IDF_j) / sqrt(colSums(t(tf_ij) * IDF_j)))
+numer_ij <- t((t(tf_ij) * IDF_j))
+TCF_w_ij <- numer_ij / sqrt(rowSums(numer_ij))
 
 # ITC重み
-ITC_w_ij <- t((t(log(tf_ij + 1)) * IDF_j) / sqrt(colSums((t(log(tf_ij + 1) * IDF_j))^2)))
+numer_ij <- t(t(log(tf_ij + 1)) * IDF_j)
+ITC_w_ij <- numer_ij / sqrt(rowSums(numer_ij)^2)
 
 
 # 4.3.4 エントロピー重み付け --------------------------------------------------------
 
 # エントロピー重み付け
-Entropy_w_ij <- log(tf_ij + 1) * (1 + colSums(t(tf_ij) / df_j * log(t(tf_ij) / df_j + 1e-7)) / log(N))
+tmp_ij <- t(t(tf_ij) / df_j)
+Entropy_w_ij <- t(t(log(tf_ij + 1)) * (1 + colSums(tmp_ij * log(tmp_ij + 1e-7)) / log(N)))
 
 
 # 4.3.5 相互情報量による共起頻度の重み付け -------------------------------------------------
